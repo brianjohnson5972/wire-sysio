@@ -52,6 +52,7 @@ namespace chain {
 
          friend class eosio::net_plugin_impl;
          friend struct eosio::handshake_message;
+         template<typename StoredType>
          friend class block_log;
          friend struct trim_data;
          friend class controller;
