@@ -1,6 +1,7 @@
 file(GLOB HEADERS "include/sysio/sub_chain_plugin/*.hpp")
 add_library( sub_chain_plugin
              sub_chain_plugin.cpp
+             block_s_root_processing.cpp
              ${HEADERS} )
 
 target_link_libraries( sub_chain_plugin appbase fc chain_plugin sysio_chain http_plugin )
