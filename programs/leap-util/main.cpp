@@ -10,6 +10,8 @@
 #include "actions/generic.hpp"
 #include "actions/snapshot.hpp"
 
+#include <sysio/chain/block_header_state.hpp>
+
 #include <memory>
 
 int main(int argc, char** argv) {
@@ -30,8 +32,12 @@ int main(int argc, char** argv) {
    generic_subcommand->setup(app);
 
    // blocklog sc tree from sysio-blocklog
-   auto blocklog_subcommand = std::make_shared<blocklog_actions>();
+   auto blocklog_subcommand = std::make_shared<blocklog_actions<signed_block>>();
    blocklog_subcommand->setup(app);
+
+   // block state log sc tree ffrom sysio-blocklog
+   auto block_state_log_subcommand = std::make_shared<blocklog_actions<block_header_state>>();
+   block_state_log_subcommand->setup(app);
 
    // snapshot sc tree
    auto snapshot_subcommand = std::make_shared<snapshot_actions>();

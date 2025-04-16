@@ -1890,6 +1890,11 @@ namespace sysio { namespace chain {
       }
    }
 
+   template<typename StoredType>
+   std::string block_log<StoredType>::file_stem() {
+      return filename_prefix<StoredType>();
+   }
+
    // Force instantiation of the two supported block_log implementations
    template class block_log<block_header_state>;
    template class block_log<signed_block>;

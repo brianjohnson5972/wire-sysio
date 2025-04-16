@@ -114,6 +114,9 @@ namespace sysio { namespace chain {
 
          static void split_blocklog(const std::filesystem::path& block_dir, const std::filesystem::path& dest_dir, uint32_t stride);
          static void merge_blocklogs(const std::filesystem::path& block_dir, const std::filesystem::path& dest_dir);
+
+         // retrieve the file stem (filename without the extension) used for this type of block_log
+         static std::string file_stem();
    private:
          std::unique_ptr<detail::block_log_impl<stored_type> > my;
    };

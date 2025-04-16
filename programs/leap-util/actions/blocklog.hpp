@@ -19,8 +19,12 @@ struct blocklog_options {
    block_log_config blog_conf;
 };
 
+template<typename StoredType>
 class blocklog_actions : public sub_command<blocklog_options> {
 public:
+   using stored_type = StoredType;
+   using stored_type_ptr = std::shared_ptr<stored_type>;
+
    blocklog_actions() : sub_command() {}
    void setup(CLI::App& app);
 

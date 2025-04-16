@@ -42,10 +42,32 @@ struct report_time {
    const std::string _desc;
 };
 
+namespace {
+   template<typename StroredType>
+   std::pair<std::string,std::string> get_action_strings();
 
-void blocklog_actions::setup(CLI::App& app) {
+   template<>
+   std::pair<std::string,std::string> get_action_strings<signed_block>() {
+      return std::make_pair("block-log", "Blocklog utility");
+   }
+
+   template<>
+   std::pair<std::string,std::string> get_action_strings<block_header_state>() {
+      return std::make_pair("block-state-log", "Block-State-log utility");
+   }
+
+   uint32_t retrieve_block_num(const signed_block& b) { return b.block_num(); }
+   uint32_t retrieve_block_num(const block_header_state& b) { return b.block_num; }
+
+  
+   inline block_id_type retrieve_id(const signed_block& b) { return b.calculate_id(); }
+   inline block_id_type retrieve_id(const block_header_state& b) { return b.id; }
+}
+
+template<typename StoredType>
+void blocklog_actions<StoredType>::setup(CLI::App& app) {
    // callback helper with error code handling
-   auto err_guard = [this](int (blocklog_actions::*fun)()) {
+   auto err_guard = [this](int (blocklog_actions<StoredType>::*fun)()) {
       try {
          initialize();
          int rc = (this->*fun)();
@@ -57,7 +79,8 @@ void blocklog_actions::setup(CLI::App& app) {
    };
 
    // main command
-   auto* sub = app.add_subcommand("block-log", "Blocklog utility");
+   auto strings = get_action_strings<StoredType>();
+   auto* sub = app.add_subcommand(strings.first, strings.second);
    sub->require_subcommand();
    sub->fallthrough();
 
@@ -65,7 +88,7 @@ void blocklog_actions::setup(CLI::App& app) {
    sub->add_option("--blocks-dir", opt->blocks_dir, "The location of the blocks directory (absolute path or relative to the current directory).");
 
    // subcommand - print log
-   auto* print_log = sub->add_subcommand("print-log", "Print  blocks.log as JSON")->callback([err_guard]() { err_guard(&blocklog_actions::read_log); });
+   auto* print_log = sub->add_subcommand("print-log", "Print the block log type's .log file as JSON")->callback([err_guard]() { err_guard(&blocklog_actions<StoredType>::read_log); });
    print_log->add_option("--output-file,-o", opt->output_file, "The file to write the output to (absolute or relative path).  If not specified then output is to stdout.");
    print_log->add_option("--first,-f", opt->first_block, "The first block number to log or the first to keep if trim-blocklog.");
    print_log->add_option("--last,-l", opt->last_block, "The last block number to log or the last to keep if trim-blocklog.");
@@ -73,44 +96,45 @@ void blocklog_actions::setup(CLI::App& app) {
    print_log->add_flag("--as-json-array", opt->as_json_array, "Print out json blocks wrapped in json array (otherwise the output is free-standing json objects).");
 
    // subcommand - make index
-   auto* make_index = sub->add_subcommand("make-index", "Create blocks.index from blocks.log. Must give 'blocks-dir'. Give 'output-file' relative to current directory or absolute path (default is <blocks-dir>/blocks.index).")->callback([err_guard]() { err_guard(&blocklog_actions::make_index); });
+   auto* make_index = sub->add_subcommand("make-index", "Create a .index file from the block log type's .log file. Must give 'blocks-dir'. Give 'output-file' relative to current directory or absolute path (default is <blocks-dir>/<associated .index file>).")->callback([err_guard]() { err_guard(&blocklog_actions<StoredType>::make_index); });
    make_index->add_option("--output-file,-o", opt->output_file, "The file to write the output to (absolute or relative path).  If not specified then output is to stdout.");
 
    // subcommand - trim blocklog
-   auto* trim_blocklog = sub->add_subcommand("trim-blocklog", "Trim blocks.log and blocks.index. Must give 'blocks-dir' and 'first' and/or 'last'.")->callback([err_guard]() { err_guard(&blocklog_actions::trim_blocklog); });
+   auto* trim_blocklog = sub->add_subcommand("trim-blocklog", "Trim the block log type's .log and .index files. Must give 'blocks-dir' and 'first' and/or 'last'.")->callback([err_guard]() { err_guard(&blocklog_actions<StoredType>::trim_blocklog); });
    trim_blocklog->add_option("--first,-f", opt->first_block, "The first block number to keep.")->required();
    trim_blocklog->add_option("--last,-l", opt->last_block, "The last block number to keep.")->required();
 
    // subcommand - extract blocks
-   auto* extract_blocks = sub->add_subcommand("extract-blocks", "Extract range of blocks from blocks.log and write to output-dir.  Must give 'first' and/or 'last'.")->callback([err_guard]() { err_guard(&blocklog_actions::extract_blocks); });
+   auto* extract_blocks = sub->add_subcommand("extract-blocks", "Extract range of blocks from block log type's .log file and write to output-dir.  Must give 'first' and/or 'last'.")->callback([err_guard]() { err_guard(&blocklog_actions<StoredType>::extract_blocks); });
    extract_blocks->add_option("--first,-f", opt->first_block, "The first block number to keep.")->required();
    extract_blocks->add_option("--last,-l", opt->last_block, "The last block number to keep.")->required();
    extract_blocks->add_option("--output-dir", opt->output_dir, "The output directory for the block log extracted from blocks-dir.")->required();
 
    // subcommand - split blocks
-   auto* split_blocks = sub->add_subcommand("split-blocks", "Split the blocks.log based on the stride and store the result in the specified 'output-dir'.")->callback([err_guard]() { err_guard(&blocklog_actions::split_blocks); });
+   auto* split_blocks = sub->add_subcommand("split-blocks", "Split the block log type's .log file based on the stride and store the result in the specified 'output-dir'.")->callback([err_guard]() { err_guard(&blocklog_actions<StoredType>::split_blocks); });
    split_blocks->add_option("--blocks-dir", opt->blocks_dir, "The location of the blocks directory (absolute path or relative to the current directory).");
    split_blocks->add_option("--output-dir", opt->output_dir, "The output directory for the split block log.")->required();
    split_blocks->add_option("--stride", opt->stride, "The number of blocks to split into each file.")->required();
 
    // subcommand - merge blocks
-   auto* merge_blocks = sub->add_subcommand("merge-blocks", "Merge block log files in 'blocks-dir' with the file pattern 'blocks-\\d+-\\d+.[log,index]' to 'output-dir' whenever possible."
-          "The files in 'blocks-dir' will be kept without change.")->callback([err_guard]() { err_guard(&blocklog_actions::merge_blocks); });
+   auto* merge_blocks = sub->add_subcommand("merge-blocks", "Merge block log files in 'blocks-dir' with its standard file pattern '<prefix>-\\d+-\\d+.[log,index]' to 'output-dir' whenever possible."
+          "The files in 'blocks-dir' will be kept without change.")->callback([err_guard]() { err_guard(&blocklog_actions<StoredType>::merge_blocks); });
    merge_blocks->add_option("--blocks-dir", opt->blocks_dir, "The location of the blocks directory (absolute path or relative to the current directory).");
    merge_blocks->add_option("--output-dir", opt->output_dir, "The output directory for the merged block log.")->required();
 
    // subcommand - smoke test
-   sub->add_subcommand("smoke-test", "Quick test that blocks.log and blocks.index are well formed and agree with each other.")->callback([err_guard]() { err_guard(&blocklog_actions::smoke_test); });
+   sub->add_subcommand("smoke-test", "Quick test that block log type's .log and .index files are well formed and agree with each other.")->callback([err_guard]() { err_guard(&blocklog_actions<StoredType>::smoke_test); });
 
    // subcommand - vacuum
-   sub->add_subcommand("vacuum", "Vacuum a pruned blocks.log in to an un-pruned blocks.log")->callback([err_guard]() { err_guard(&blocklog_actions::do_vacuum); });
+   sub->add_subcommand("vacuum", "Vacuum a pruned block log type's .log file in to an un-pruned .log file")->callback([err_guard]() { err_guard(&blocklog_actions<StoredType>::do_vacuum); });
 
    // subcommand - genesis
-   auto* genesis = sub->add_subcommand("genesis", "Extract genesis_state from blocks.log as JSON")->callback([err_guard]() { err_guard(&blocklog_actions::do_genesis); });
+   auto* genesis = sub->add_subcommand("genesis", "Extract genesis_state from the block log type's .log file as JSON")->callback([err_guard]() { err_guard(&blocklog_actions<StoredType>::do_genesis); });
    genesis->add_option("--output-file,-o", opt->output_file, "The file to write the output to (absolute or relative path).  If not specified then output is to stdout.");
 }
 
-void blocklog_actions::initialize() {
+template<typename StoredType>
+void blocklog_actions<StoredType>::initialize() {
    try {
       std::filesystem::path bld = opt->blocks_dir;
       if(bld.is_relative())
@@ -128,13 +152,14 @@ void blocklog_actions::initialize() {
 
       //if the log is pruned, keep it that way by passing in a config with a large block pruning value. There is otherwise no
       // way to tell block_log "keep the current non/pruneness of the log"
-      if(block_log<signed_block>::is_pruned_log(opt->blocks_dir))
+      if(block_log<StoredType>::is_pruned_log(opt->blocks_dir))
          opt->blog_conf = prune_blocklog_config { .prune_blocks = UINT32_MAX };
    }
    FC_LOG_AND_RETHROW()
 }
 
-int blocklog_actions::make_index() {
+template<typename StoredType>
+int blocklog_actions<StoredType>::make_index() {
    const std::filesystem::path blocks_dir = opt->blocks_dir;
    std::filesystem::path out_file = blocks_dir / "blocks.index";
    const std::filesystem::path block_file = blocks_dir / "blocks.log";
@@ -143,14 +168,15 @@ int blocklog_actions::make_index() {
    report_time rt("making index");
    const auto log_level = fc::logger::get(DEFAULT_LOGGER).get_log_level();
    fc::logger::get(DEFAULT_LOGGER).set_log_level(fc::log_level::debug);
-   block_log<signed_block>::construct_index(block_file.generic_string(), out_file.generic_string());
+   block_log<StoredType>::construct_index(block_file.generic_string(), out_file.generic_string());
    fc::logger::get(DEFAULT_LOGGER).set_log_level(log_level);
    rt.report();
 
    return 0;
 }
 
-int blocklog_actions::trim_blocklog() {
+template<typename StoredType>
+int blocklog_actions<StoredType>::trim_blocklog() {
    if(opt->last_block != std::numeric_limits<uint32_t>::max()) {
       if(trim_blocklog_end(opt->blocks_dir, opt->last_block) != 0) return -1;
    }
@@ -160,15 +186,17 @@ int blocklog_actions::trim_blocklog() {
    return 0;
 }
 
-int blocklog_actions::extract_blocks() {
+template<typename StoredType>
+int blocklog_actions<StoredType>::extract_blocks() {
    extract_block_range(opt->blocks_dir, opt->output_dir, opt->first_block, opt->last_block);
    return 0;
 }
 
-int blocklog_actions::do_genesis() {
+template<typename StoredType>
+int blocklog_actions<StoredType>::do_genesis() {
    std::filesystem::path bld = opt->blocks_dir;
 
-   auto context = block_log<signed_block>::extract_chain_context(opt->blocks_dir,opt->blocks_dir);
+   auto context = block_log<StoredType>::extract_chain_context(opt->blocks_dir,opt->blocks_dir);
    
    if (!context) {
       std::cerr << "No blocks log found at '" << opt->blocks_dir.c_str() << "'." << std::endl;
@@ -202,38 +230,43 @@ int blocklog_actions::do_genesis() {
    return 0;
 }
 
-int blocklog_actions::trim_blocklog_end(std::filesystem::path block_dir, uint32_t n) {//n is last block to keep (remove later blocks)
+template<typename StoredType>
+int blocklog_actions<StoredType>::trim_blocklog_end(std::filesystem::path block_dir, uint32_t n) {//n is last block to keep (remove later blocks)
    report_time rt("trimming blocklog end");
    using namespace std;
-   int ret = block_log<signed_block>::trim_blocklog_end(block_dir, n);
+   int ret = block_log<StoredType>::trim_blocklog_end(block_dir, n);
    rt.report();
    return ret;
 }
 
-bool blocklog_actions::trim_blocklog_front(std::filesystem::path block_dir, uint32_t n) {//n is first block to keep (remove prior blocks)
+template<typename StoredType>
+bool blocklog_actions<StoredType>::trim_blocklog_front(std::filesystem::path block_dir, uint32_t n) {//n is first block to keep (remove prior blocks)
    report_time rt("trimming blocklog start");
-   const bool status = block_log<signed_block>::trim_blocklog_front(block_dir, block_dir / "old", n);
+   const bool status = block_log<StoredType>::trim_blocklog_front(block_dir, block_dir / "old", n);
    rt.report();
    return status;
 }
 
-void blocklog_actions::extract_block_range(std::filesystem::path block_dir, std::filesystem::path output_dir, uint32_t start, uint32_t last) {
+template<typename StoredType>
+void blocklog_actions<StoredType>::extract_block_range(std::filesystem::path block_dir, std::filesystem::path output_dir, uint32_t start, uint32_t last) {
    report_time rt("extracting block range");
    SYS_ASSERT(last > start, block_log_exception, "extract range end must be greater than start");
-   block_log<signed_block>::extract_block_range(block_dir, output_dir, start, last);
+   block_log<StoredType>::extract_block_range(block_dir, output_dir, start, last);
    rt.report();
 }
 
-int blocklog_actions::smoke_test() {
+template<typename StoredType>
+int blocklog_actions<StoredType>::smoke_test() {
    using namespace std;
    std::filesystem::path block_dir = opt->blocks_dir;
    cout << "\nSmoke test of blocks.log and blocks.index in directory " << block_dir << '\n';
-   block_log<signed_block>::smoke_test(block_dir, 0);
+   block_log<StoredType>::smoke_test(block_dir, 0);
    cout << "\nno problems found\n"; // if get here there were no exceptions
    return 0;
 }
 
-int blocklog_actions::do_vacuum() {
+template<typename StoredType>
+int blocklog_actions<StoredType>::do_vacuum() {
    std::filesystem::path bld = opt->blocks_dir;
    auto full_path = (bld / "blocks.log").generic_string();
 
@@ -246,22 +279,23 @@ int blocklog_actions::do_vacuum() {
       std::cerr << "blocks.log is not a pruned log; nothing to vacuum" << std::endl;
       return -1;
    }
-   block_log<signed_block> blocks(opt->blocks_dir);// turns off pruning this performs a vacuum
+   block_log<StoredType> blocks(opt->blocks_dir);// turns off pruning this performs a vacuum
    std::cout << "Successfully vacuumed block log" << std::endl;
    return 0;
 }
 
-int blocklog_actions::read_log() {
+template<typename StoredType>
+int blocklog_actions<StoredType>::read_log() {
    initialize();
    report_time rt("reading log");
-   block_log<signed_block> block_logger(opt->blocks_dir, opt->blog_conf);
+   block_log<StoredType> block_logger(opt->blocks_dir, opt->blog_conf);
    const auto end = block_logger.read_head();
    SYS_ASSERT(end, block_log_exception, "No blocks found in block log");
-   SYS_ASSERT(end->block_num() > 1, block_log_exception, "Only one block found in block log");
+   SYS_ASSERT(retrieve_block_num(*end) > 1, block_log_exception, "Only one block found in block log");
 
    //fix message below, first block might not be 1, first_block_num is not set yet
    ilog("existing block log contains block num ${first} through block num ${n}",
-        ("first", block_logger.first_block_num())("n", end->block_num()));
+        ("first", block_logger.first_block_num())("n", retrieve_block_num(*end)));
    if(opt->first_block < block_logger.first_block_num()) {
       opt->first_block = block_logger.first_block_num();
    }
@@ -278,13 +312,14 @@ int blocklog_actions::read_log() {
 
       fork_db_branch = fork_db.fetch_branch(fork_db.head()->id);
       if(fork_db_branch.empty()) {
-         elog("no blocks available in reversible block database: only block_log blocks are available");
+         elog("no blocks available in reversible block database: only ${type} blocks are available",
+              ("type",get_action_strings<StoredType>()));
       } else {
          auto first = fork_db_branch.rbegin();
          auto last = fork_db_branch.rend() - 1;
          ilog("existing reversible fork_db block num ${first} through block num ${last} ",
               ("first", (*first)->block_num)("last", (*last)->block_num));
-         SYS_ASSERT(end->block_num() + 1 == (*first)->block_num, block_log_exception,
+         SYS_ASSERT(retrieve_block_num(*end) + 1 == (*first)->block_num, block_log_exception,
                     "fork_db does not start at end of block log");
       }
    }
@@ -305,17 +340,17 @@ int blocklog_actions::read_log() {
    if(opt->as_json_array)
       *out << "[";
    uint32_t block_num = (opt->first_block < 1) ? 1 : opt->first_block;
-   signed_block_ptr next;
+   stored_type_ptr next;
    fc::variant pretty_output;
-   auto print_block = [&](signed_block_ptr& next) {
+   auto print_block = [&](auto& next) {
       abi_serializer::to_variant(
             *next,
             pretty_output,
             [](account_name n) { return std::optional<abi_serializer>(); },
             fc::seconds(1));
-      const auto block_id = next->calculate_id();
+      const auto block_id = retrieve_id(*next);
       const uint32_t ref_block_prefix = block_id._hash[1];
-      const auto enhanced_object = fc::mutable_variant_object("block_num", next->block_num())("id", block_id)("ref_block_prefix", ref_block_prefix)(pretty_output.get_object());
+      const auto enhanced_object = fc::mutable_variant_object("block_num", retrieve_block_num(*next))("id", block_id)("ref_block_prefix", ref_block_prefix)(pretty_output.get_object());
       fc::variant v(std::move(enhanced_object));
       if(opt->no_pretty_print)
          *out << fc::json::to_string(v, fc::time_point::maximum());
@@ -349,13 +384,19 @@ int blocklog_actions::read_log() {
    return 0;
 }
 
-int blocklog_actions::split_blocks() {
-   block_log<signed_block>::split_blocklog(opt->blocks_dir, opt->output_dir, opt->stride);
+template<typename StoredType>
+int blocklog_actions<StoredType>::split_blocks() {
+   block_log<StoredType>::split_blocklog(opt->blocks_dir, opt->output_dir, opt->stride);
    return 0;
 
 }
 
-int blocklog_actions::merge_blocks() {
-   block_log<signed_block>::merge_blocklogs(opt->blocks_dir, opt->output_dir);
+template<typename StoredType>
+int blocklog_actions<StoredType>::merge_blocks() {
+   block_log<StoredType>::merge_blocklogs(opt->blocks_dir, opt->output_dir);
    return 0;
 }
+
+// Force the instantiation of the two supported blocklog_actions implementations
+template class blocklog_actions<block_header_state>;
+template class blocklog_actions<signed_block>;

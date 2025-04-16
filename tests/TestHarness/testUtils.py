@@ -420,7 +420,8 @@ class Utils:
         return "pgrep %s %s" % (pgrepOpts, serverName)
 
     @staticmethod
-    def getBlockLog(blockLogLocation, blockLogAction=BlockLogAction.return_blocks, outputFile=None, first=None, last=None, throwException=False, silentErrors=False, exitOnError=False):
+    def getBlockTypeLog(logType, blockLogLocation, blockLogAction=BlockLogAction.return_blocks, outputFile=None, first=None, last=None, throwException=False, silentErrors=False, exitOnError=False):
+        assert(isinstance(logType, str))
         assert(isinstance(blockLogLocation, str))
         outputFileStr=" --output-file %s " % (outputFile) if outputFile is not None else ""
         firstStr=" --first %s " % (first) if first is not None else ""
@@ -440,7 +441,7 @@ class Utils:
         else:
             unhandledEnumType(blockLogAction)
 
-        cmd="%s block-log %s --blocks-dir %s  %s%s%s" % (Utils.LeapClientPath, blockLogActionStr, blockLogLocation, outputFileStr, firstStr, lastStr)
+        cmd="%s %s %s --blocks-dir %s  %s%s%s" % (Utils.LeapClientPath, logType, blockLogActionStr, blockLogLocation, outputFileStr, firstStr, lastStr)
         if Utils.Debug: Utils.Print("cmd: %s" % (cmd))
         rtn=None
         try:
@@ -466,6 +467,14 @@ class Utils:
             Utils.errorExit("Failed to \"%s\"" % (cmd))
 
         return rtn
+
+    @staticmethod
+    def getBlockLog(blockLogLocation, blockLogAction=BlockLogAction.return_blocks, outputFile=None, first=None, last=None, throwException=False, silentErrors=False, exitOnError=False):
+        return getBlockTypeLog("block-log", blockLogLocation, blockLogAction, outputFile, first, last, throwException, silentErrors, exitOnError)
+
+    @staticmethod
+    def getBlockStateLog(blockLogLocation, blockLogAction=BlockLogAction.return_blocks, outputFile=None, first=None, last=None, throwException=False, silentErrors=False, exitOnError=False):
+        return getBlockTypeLog("block-state-log", blockLogLocation, blockLogAction, outputFile, first, last, throwException, silentErrors, exitOnError)
 
     @staticmethod
     def compare(obj1,obj2,context):
