@@ -8,6 +8,7 @@
 
 #include <sysio/chain/snapshot.hpp>
 #include <sysio/chain/protocol_feature_manager.hpp>
+#include <sysio/chain/root_processor.hpp>
 #include <sysio/chain/webassembly/sys-vm-oc/config.hpp>
 #include <sysio/chain/s_root_extension.hpp>
 
@@ -216,6 +217,7 @@ namespace sysio { namespace chain {
          void   set_action_blacklist( const flat_set< pair<account_name, action_name> >& );
          void   set_key_blacklist( const flat_set<public_key_type>& );
          void   set_s_header( const s_header& );
+         void   set_root_processor( const root_processor_ptr& rp );
 
 
          void   set_disable_replay_opts( bool v );

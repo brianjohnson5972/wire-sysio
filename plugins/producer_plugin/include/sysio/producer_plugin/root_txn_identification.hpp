@@ -1,7 +1,7 @@
 #pragma once
 #include <sysio/chain/types.hpp>
 #include <sysio/producer_plugin/contract_action_match.hpp>
-#include <sysio/producer_plugin/root_processor.hpp>
+#include <sysio/chain/root_processor.hpp>
 
 namespace sysio {
    namespace chain {
