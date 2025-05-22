@@ -130,7 +130,7 @@ struct building_block {
    deque<transaction_receipt>                 _pending_trx_receipts; // boost deque in 1.71 with 1024 elements performs better
    std::variant<checksum256_type, digests_t>  _trx_mroot_or_receipt_digests;
    digests_t                                  _action_receipt_digests;
-   std::optional<s_header>                    _s_header; // Added new functionality to pass an optional s_header to be included in block header extension
+   std::deque<s_header>                       _s_header; // Added new functionality to pass many state headers to be included in block header extension
 };
 
 struct assembled_block {
@@ -1873,8 +1873,8 @@ struct controller_impl {
 
       auto& bb = std::get<building_block>(pending->_block_stage);
 
-      if (bb._s_header){
-        ilog("s_header present in finalize block, adding to block header: ${s}", ("s", bb._s_header->to_string()));
+      for (const auto& header : bb._s_header){
+        ilog("s_header present in finalize block, adding to block header: ${s}", ("s", header.to_string()));
       }
 
       auto action_merkle_fut = post_async_task( thread_pool.get_executor(),
@@ -1907,7 +1907,7 @@ struct controller_impl {
          bb._new_pending_producer_schedule,
          std::move( bb._new_protocol_feature_activations ),
          protocol_features.get_protocol_feature_set(),
-         bb._s_header // Include optional s_header in block header
+         bb._s_header // Include optional s_headers in block header
       ) );
 
       block_ptr->transactions = std::move( bb._pending_trx_receipts );
@@ -1971,6 +1971,10 @@ struct controller_impl {
 
          emit( self.accepted_block, bsp );
 
+         if( self.is_builtin_activated( builtin_protocol_feature_t::multiple_state_roots_supported ) ) {
+            
+         }
+         
          if( s == controller::block_status::incomplete ) {
             log_irreversible();
          }
@@ -2152,14 +2156,17 @@ struct controller_impl {
                         ("lhs", r)("rhs", static_cast<const transaction_receipt_header&>(receipt)) );
          }
 
-         // New: Process the s_header from block header extensions
-         auto s_header_it = std::find_if(b->header_extensions.begin(), b->header_extensions.end(),
-                                       [](const auto& ext) { return ext.first == s_root_extension::extension_id(); });
-         if (s_header_it != b->header_extensions.end()) {
-            ilog("Found s_root_extension in header_extensions, attempting to extract...");
-            s_header extracted_s_header = fc::raw::unpack<s_header>(s_header_it->second);
-            ilog("Extracted s_header: ${s_header}", ("s_header", extracted_s_header.to_string()));
-            self.set_s_header(extracted_s_header); // Attempt to set s-header
+         if( !self.is_builtin_activated( builtin_protocol_feature_t::multiple_state_roots_supported ) ) {
+            // New: Process the s_header from block header extensions
+            // Since the multiple state roots feature is not activated, there will only be, at most, one s_header
+            auto s_header_it = std::find_if(b->header_extensions.begin(), b->header_extensions.end(),
+                                          [](const auto& ext) { return ext.first == s_root_extension::extension_id(); });
+            if (s_header_it != b->header_extensions.end()) {
+               ilog("Found s_root_extension in header_extensions, attempting to extract...");
+               s_header extracted_s_header = fc::raw::unpack<s_header>(s_header_it->second);
+               ilog("Extracted s_header: ${s_header}", ("s_header", extracted_s_header.to_string()));
+               self.set_s_header(extracted_s_header); // Attempt to set s-header
+            }
          }
 
          finalize_block();
